@@ -24,8 +24,9 @@ type Server struct {
 // Options is a collection of settings exposed to configure a Server
 // at generation time.
 type Options struct {
-	Logger zerolog.Logger
-	DB     *sql.DB
+	Logger      zerolog.Logger
+	DB          *sql.DB
+	ValidTokens []string
 }
 
 func WithLogger(logger zerolog.Logger) Configurator {
@@ -174,11 +175,33 @@ func New(configurators ...Configurator) *Server {
 			next.ServeHTTP(w, r.WithContext(options.Logger.WithContext(ctx)))
 		})
 	})
-	router.Post("/", srv.handleCreateURL)
+	router.With(srv.tokenRequiredMiddleware).Post("/", srv.handleCreateURL)
 	router.Get("/{id}", srv.handleResolve)
 	srv.router = router
 	srv.options = options
 	return srv
+}
+
+func (srv *Server) tokenRequiredMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		token := r.Header.Get("Authorization")
+		if !srv.isValidToken(ctx, token) {
+			srv.sendError(ctx, w, fmt.Errorf("no valid token provided"), http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (srv *Server) isValidToken(ctx context.Context, token string) bool {
+	for _, v := range srv.options.ValidTokens {
+		if fmt.Sprintf("SimpleToken %s", v) == token {
+			return true
+		}
+	}
+	return false
+
 }
 
 func (srv *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -187,9 +210,8 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (srv *Server) sendError(ctx context.Context, w http.ResponseWriter, err error, status int) {
 	logger := zerolog.Ctx(ctx)
-	msg := "Internal server error"
 	if status >= 500 {
 		logger.Error().Err(err).Msg(err.Error())
 	}
-	http.Error(w, msg, status)
+	http.Error(w, "", status)
 }

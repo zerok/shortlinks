@@ -19,8 +19,10 @@ func main() {
 	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Logger()
 	var addr string
 	var dbPath string
+	var tokens []string
 	pflag.StringVar(&addr, "addr", "localhost:8000", "Address to listen on")
 	pflag.StringVar(&dbPath, "db", "./shortlinks.sqlite", "Path to a database file")
+	pflag.StringSliceVar(&tokens, "token", []string{}, "Valid tokens for creating new links")
 	pflag.Parse()
 
 	db, err := sql.Open("sqlite3", dbPath)
@@ -43,7 +45,9 @@ func main() {
 		}
 	}
 
-	handler := server.New(server.WithLogger(logger), server.WithDatabase(db))
+	handler := server.New(server.WithLogger(logger), server.WithDatabase(db), func(o *server.Options) {
+		o.ValidTokens = tokens
+	})
 
 	s := http.Server{}
 	s.Handler = handler
