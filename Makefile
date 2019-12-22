@@ -3,10 +3,7 @@ all: bin/shortlinks
 bin:
 	mkdir -p bin
 
-pkged.go: $(shell find ./migrations/ -name '*.sql')
-	pkger
-
-bin/shortlinks: $(shell find . -name '*.go') bin go.mod go.sum pkged.go
+bin/shortlinks: $(shell find . -name '*.go') bin go.mod go.sum
 	cd cmd/shortlinks && go build -o ../../$@
 
 clean:
@@ -14,5 +11,8 @@ clean:
 
 test:
 	go test ./... -v
+
+docker:
+	docker build -t zerok/shortlinks:latest .
 
 .PHONY: test clean all

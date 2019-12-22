@@ -2,13 +2,13 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"os"
 
 	"github.com/golang-migrate/migrate/v4"
 	driver "github.com/golang-migrate/migrate/v4/database/sqlite3"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/markbates/pkger"
 	"github.com/rs/zerolog"
 	"github.com/spf13/pflag"
 	"github.com/zerok/shortlinks/internal/server"
@@ -17,13 +17,14 @@ import (
 )
 
 func main() {
-	pkger.Include("/migrations")
 	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Logger()
 	var addr string
 	var dbPath string
+	var migrationsPath string
 	var tokens []string
 	pflag.StringVar(&addr, "addr", "localhost:8000", "Address to listen on")
 	pflag.StringVar(&dbPath, "db", "./shortlinks.sqlite", "Path to a database file")
+	pflag.StringVar(&migrationsPath, "migrations", "./migrations", "Path to a database file")
 	pflag.StringSliceVar(&tokens, "token", []string{}, "Valid tokens for creating new links")
 	pflag.Parse()
 
@@ -37,7 +38,7 @@ func main() {
 		logger.Fatal().Err(err).Msgf("Failed to initialize migration driver.")
 	}
 
-	mig, err := migrate.NewWithDatabaseInstance("pkger://", dbPath, d)
+	mig, err := migrate.NewWithDatabaseInstance(fmt.Sprintf("file://%s", migrationsPath), dbPath, d)
 	if err != nil {
 		logger.Fatal().Err(err).Msgf("Failed to initialize migrations.")
 	}
