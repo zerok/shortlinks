@@ -29,12 +29,16 @@ type Options struct {
 	ValidTokens []string
 }
 
+// WithLogger is a configurator that injects the given Logger into the
+// final configuration.
 func WithLogger(logger zerolog.Logger) Configurator {
 	return func(o *Options) {
 		o.Logger = logger
 	}
 }
 
+// WithDatabase is a configurator that injects the given database
+// instance into the final configuration.
 func WithDatabase(db *sql.DB) Configurator {
 	return func(o *Options) {
 		o.DB = db
@@ -160,6 +164,8 @@ func (srv *Server) generateID(ctx context.Context, preferredLength int, knownIDs
 	}
 }
 
+// New creates a new Server instance after applying all provided
+// configurators.
 func New(configurators ...Configurator) *Server {
 	options := Options{
 		Logger: zerolog.Nop().With().Logger(),
@@ -204,6 +210,7 @@ func (srv *Server) isValidToken(ctx context.Context, token string) bool {
 
 }
 
+// ServeHTTP provided to implement the http.Handler interface.
 func (srv *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	srv.router.ServeHTTP(w, r)
 }
