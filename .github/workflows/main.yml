@@ -12,3 +12,7 @@ jobs:
         go-version: "1.13.5"
     - name: Run tests
       run: go test ./...
+    - name: Trigger docker build
+      run: curl -X POST $URL
+      env:
+        URL: ${{ secrets.DOCKERHUB_WEBHOOK }}
