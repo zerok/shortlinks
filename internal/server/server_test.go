@@ -35,57 +35,68 @@ func setupDatabase(t *testing.T) *sql.DB {
 	return db
 }
 
-func TestCreateLinkMissingURL(t *testing.T) {
+type testbed struct {
+	srv        *server.Server
+	db         *sql.DB
+	logger     zerolog.Logger
+	validToken string
+}
+
+func (tb *testbed) teardown() {
+	if tb.db != nil {
+		tb.db.Close()
+	}
+}
+
+func setupTestbed(t *testing.T) *testbed {
 	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr})
 	db := setupDatabase(t)
-	defer db.Close()
 	srv := server.New(func(c *server.Options) {
 		c.ValidTokens = []string{"token"}
 		c.DB = db
 		c.Logger = logger
 	})
+	return &testbed{
+		srv:        srv,
+		logger:     logger,
+		db:         db,
+		validToken: "token",
+	}
+}
+
+func TestCreateLinkMissingURL(t *testing.T) {
+	tb := setupTestbed(t)
+	defer tb.teardown()
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString("url="))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Authorization", "SimpleToken token")
-	srv.ServeHTTP(w, r)
+	tb.srv.ServeHTTP(w, r)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestCreateLinkBrokenDB(t *testing.T) {
-	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr})
-	db := setupDatabase(t)
+	tb := setupTestbed(t)
 	// Close the DB right away
-	db.Close()
-	srv := server.New(func(c *server.Options) {
-		c.ValidTokens = []string{"token"}
-		c.DB = db
-		c.Logger = logger
-	})
+	tb.db.Close()
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString("url=http://test.com"))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Authorization", "SimpleToken token")
-	srv.ServeHTTP(w, r)
+	tb.srv.ServeHTTP(w, r)
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestCreateLink(t *testing.T) {
-	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr})
-	db := setupDatabase(t)
-	defer db.Close()
-	srv := server.New(func(c *server.Options) {
-		c.ValidTokens = []string{"token"}
-		c.DB = db
-		c.Logger = logger
-	})
+	tb := setupTestbed(t)
+	defer tb.teardown()
 
 	// Sending a POST request must require a valid token:
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/", nil)
-	srv.ServeHTTP(w, r)
+	tb.srv.ServeHTTP(w, r)
 	require.Equal(t, http.StatusForbidden, w.Code)
 
 	// Once a valid token is provided, a new link is stored and
@@ -94,7 +105,7 @@ func TestCreateLink(t *testing.T) {
 	r = httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString("url=http://test.com"))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Authorization", "SimpleToken token")
-	srv.ServeHTTP(w, r)
+	tb.srv.ServeHTTP(w, r)
 	require.Equal(t, http.StatusOK, w.Code)
 	code := w.Body.String()
 	require.NotEmpty(t, code)
@@ -102,7 +113,7 @@ func TestCreateLink(t *testing.T) {
 	// That code should be usable:
 	w = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodGet, "/"+code, nil)
-	srv.ServeHTTP(w, r)
+	tb.srv.ServeHTTP(w, r)
 	require.Equal(t, http.StatusTemporaryRedirect, w.Code)
 	require.Equal(t, "http://test.com", w.Header().Get("Location"))
 
@@ -111,7 +122,7 @@ func TestCreateLink(t *testing.T) {
 	r = httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString("url=http://test.com"))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Authorization", "SimpleToken token")
-	srv.ServeHTTP(w, r)
+	tb.srv.ServeHTTP(w, r)
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, code, w.Body.String())
 
@@ -120,40 +131,28 @@ func TestCreateLink(t *testing.T) {
 	r = httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString("url=http://test2.com"))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("Authorization", "SimpleToken token")
-	srv.ServeHTTP(w, r)
+	tb.srv.ServeHTTP(w, r)
 	require.Equal(t, http.StatusOK, w.Code)
 	require.NotEmpty(t, w.Body.String())
 	require.NotEqual(t, code, w.Body.String())
 }
 
 func TestResolveDBClosed(t *testing.T) {
-	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr})
-	db := setupDatabase(t)
-	db.Close()
-	srv := server.New(func(c *server.Options) {
-		c.ValidTokens = []string{"token"}
-		c.DB = db
-		c.Logger = logger
-	})
+	tb := setupTestbed(t)
+	tb.teardown()
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/something", nil)
-	srv.ServeHTTP(w, r)
+	tb.srv.ServeHTTP(w, r)
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestResolveMissing(t *testing.T) {
-	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr})
-	db := setupDatabase(t)
-	defer db.Close()
-	srv := server.New(func(c *server.Options) {
-		c.ValidTokens = []string{"token"}
-		c.DB = db
-		c.Logger = logger
-	})
+	tb := setupTestbed(t)
+	defer tb.teardown()
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/something", nil)
-	srv.ServeHTTP(w, r)
+	tb.srv.ServeHTTP(w, r)
 	require.Equal(t, http.StatusNotFound, w.Code)
 }
