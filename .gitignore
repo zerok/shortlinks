@@ -1,2 +1,4 @@
 /bin
 *.sqlite
+/cover.html
+/cover.out
