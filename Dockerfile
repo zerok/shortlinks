@@ -1,8 +1,8 @@
-FROM golang:1.13-alpine AS builder
+FROM golang:1.16-alpine AS builder
 RUN apk add --no-cache gcc libc-dev
 COPY . /src/
 WORKDIR /src/cmd/shortlinks
-RUN go build
+RUN go build -mod=mod
 
 FROM alpine:latest
 ENV TOKEN ""
